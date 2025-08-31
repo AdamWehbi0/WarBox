@@ -1,8 +1,10 @@
 package com.example.warbox.Controllers;
 
+import com.example.warbox.Dto.AuthResponse;
 import com.example.warbox.Dto.LoginRequest;
 import com.example.warbox.Dto.RegisterRequest;
 import com.example.warbox.Repositorys.AppUserRepo;
+import com.example.warbox.Utils.JwtUtil;
 import com.example.warbox.Utils.PasswordUtil;
 import com.example.warbox.models.AppUserEntity;
 import jakarta.validation.Valid;
@@ -10,6 +12,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Optional;
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/auth")
@@ -40,7 +43,11 @@ public class AuthController {
 
         AppUserEntity savedUser = userRepo.save(user);
 
-        return ResponseEntity.ok("User registered successfully: " + savedUser.getHandle());
+        String token = JwtUtil.generateToken(savedUser.getId(),savedUser.getEmail(),savedUser.getHandle());
+
+        AuthResponse response = new AuthResponse(token, savedUser.getEmail(), savedUser.getHandle(), savedUser.getDisplayName());
+
+        return ResponseEntity.ok(response);
     }
 
     @PostMapping("/login")
@@ -52,13 +59,39 @@ public class AuthController {
             return ResponseEntity.badRequest().body("Email or password is incorrect");
         }
 
+
         AppUserEntity user = userOptional.get();
 
         if(!PasswordUtil.matches(request.getPassword(), user.getPasswordHash())){
             return ResponseEntity.badRequest().body("Invalid email or password");
         }
 
-        return ResponseEntity.ok("Login successful for: " + user.getHandle());
+        String token = JwtUtil.generateToken(user.getId(),user.getEmail(),user.getHandle());
+
+        AuthResponse response = new AuthResponse(token,user.getEmail(),user.getHandle(),user.getDisplayName());
+
+        return ResponseEntity.ok(response);
+    }
+
+    @GetMapping("/test-token")
+    public ResponseEntity<?> testToken(@RequestHeader("Authorization") String authHeader) {
+
+        // Extract token from "Bearer eyJhbGciOiJIUzUxMiJ9..."
+        if (!authHeader.startsWith("Bearer ")) {
+            return ResponseEntity.badRequest().body("Invalid authorization header");
+        }
+
+        String token = authHeader.substring(7); // Remove "Bearer " prefix
+
+        // Test if token is valid
+        if (!JwtUtil.isTokenValid(token)) {
+            return ResponseEntity.badRequest().body("Invalid or expired token");
+        }
+
+        // Extract user ID from token
+        UUID userId = JwtUtil.getUserIdFromToken(token);
+
+        return ResponseEntity.ok("Token is valid! User ID: " + userId);
     }
 
 
